@@ -1,0 +1,17 @@
+#!/bin/bash
+WWW_DIR=/srv/www
+
+if [ -d $WWW_DIR/bin ] && [ ! -f $WWW_DIR/bin/magento-php ]; then
+  cp $WWW_DIR/bin/magento $WWW_DIR/bin/magento-php
+  cp /usr/local/bin/magento $WWW_DIR/bin/magento
+fi
+
+#Export ENV variables to www-data user
+printenv | sed 's/^\(.*\)$/export \1/g' | grep -E "^export MYSQL" > /tmp/env.sh
+
+echo "*/10 * * * * su -c \"/usr/local/bin/php $WWW_DIR/update/cron.php\" -s /bin/sh www-data > /proc/1/fd/2 2>&1" | crontab - \
+  && (crontab -l ; echo "*/10 * * * * su -c \". /tmp/env.sh; /usr/local/bin/php $WWW_DIR/bin/magento-php cron:run\" -s /bin/sh www-data > /proc/1/fd/2 2>&1") | crontab - \
+  && (crontab -l ; echo "*/10 * * * * su -c \". /tmp/env.sh; /usr/local/bin/php $WWW_DIR/bin/magento-php setup:cron:run\" -s /bin/sh www-data > /proc/1/fd/2 2>&1") | crontab -
+
+# Start the cron service
+/usr/sbin/cron

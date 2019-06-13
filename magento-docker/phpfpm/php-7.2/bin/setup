@@ -1,0 +1,61 @@
+#!/bin/bash
+WWW_DIR=/srv/www
+
+if [ ! -d $WWW_DIR/pub/static ]; then
+  echo "Creating $WWW_DIR/pub/static"
+  mkdir $WWW_DIR/pub/static
+fi
+
+if [ ! -d $WWW_DIR/pub/media ]; then
+  echo "Creating $WWW_DIR/pub/media"
+  mkdir $WWW_DIR/pub/media
+fi
+
+if [ ! -d $WWW_DIR/var ]; then
+  echo "Creating $WWW_DIR/var"
+  mkdir $WWW_DIR/var
+fi
+
+if [ ! -f $WWW_DIR/app/etc/env.php.dev ]; then
+   echo "*******************UNABLE TO FIND ENV.PHP.DEV CONFIG FILE, PULL THE LATEST APPDATA IMAGE OR MAP YOUR OWN ENV.PHP ON YOUR DOCKER-COMPOSE.YML************************"
+else
+    cp $WWW_DIR/app/etc/env.php.dev $WWW_DIR/app/etc/env.php
+fi
+
+echo "Setting project permissions...."
+chown -R www-data:www-data $WWW_DIR
+chmod +x $WWW_DIR/bin/magento
+chmod +x $WWW_DIR/bin/magento-php
+
+IS_DB_READY=false
+
+if [ $MYSQL_HOST ]; then
+    # Wait until DB (dump/server) are up.
+    while ! $IS_DB_READY; do
+        RESULT=$(mysqlshow --host=$MYSQL_HOST --user=$MYSQL_USER --password=$MYSQL_PASSWORD | grep -v Wildcard | grep -o $MYSQL_DATABASE)
+        if [ "$RESULT" == $MYSQL_DATABASE ]; then
+            IS_DB_READY=true
+        else
+           echo " WAITING FOR DB TO BE READY....."
+           sleep 5;
+        fi
+    done
+    echo "DB is ready!"
+fi
+
+#Set custom URL
+if [ $M2_BASE_URL ]; then
+    echo "Setting custom URL..."
+    su -c "/usr/local/bin/php -d memory_limit=1G ./bin/magento-php setup:store-config:set --base-url $M2_BASE_URL" -s /bin/bash www-data
+fi
+
+
+#Deploy static content
+cd $WWW_DIR
+if [ $DEPLOY_STATIC_CONTENT ]; then
+    echo "Deploying static content...."
+    su -c "/usr/local/bin/php -d memory_limit=1G ./bin/magento-php setup:static-content:deploy" -s /bin/bash www-data
+fi
+echo "************************************************************"
+echo "*************APPLICATION READY ON $M2_BASE_URL *************"
+echo "************************************************************"
